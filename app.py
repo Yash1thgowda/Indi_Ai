@@ -3,27 +3,24 @@ from typing import TypedDict
 
 from fastapi import FastAPI
 from langserve import add_routes
-
-from langchain_core.runnables import RunnableLambda
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-from langgraph.graph import StateGraph, START, END
-
 from pydantic import BaseModel
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.graph import StateGraph, START, END
 
 
 # ============================================================
-# 1. GEMINI API KEY
+# 1. API KEY
 # ============================================================
 
 api_key = os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
-    raise ValueError("GEMINI_API_KEY environment variable is not set.")
+    raise ValueError("GEMINI_API_KEY is not configured")
 
 
 # ============================================================
-# 2. LLM INITIALIZATION
+# 2. GEMINI
 # ============================================================
 
 llm = ChatGoogleGenerativeAI(
@@ -33,7 +30,7 @@ llm = ChatGoogleGenerativeAI(
 
 
 # ============================================================
-# 3. INPUT / OUTPUT SCHEMAS
+# 3. INPUT / OUTPUT
 # ============================================================
 
 class IndiAIInput(BaseModel):
@@ -54,7 +51,7 @@ class IndiAIState(TypedDict):
 
 
 # ============================================================
-# 5. INDI_AI AGENT NODE
+# 5. INDI_AI NODE
 # ============================================================
 
 def indi_ai_node(state: IndiAIState):
@@ -62,74 +59,47 @@ def indi_ai_node(state: IndiAIState):
     question = state["question"]
 
     prompt = f"""
-You are Indi_Ai, a friendly AI assistant specialized in
-Indian history and the history of India's independence.
+You are Indi_Ai, an AI assistant specializing in Indian history.
 
-Your main purpose is to answer questions about:
+You are especially designed for India's Independence Day
+and the Indian freedom struggle.
+
+Answer the user's question clearly, accurately, and in a
+student-friendly way.
+
+You can answer questions about:
 
 - Indian history
+- British rule in India
 - Indian freedom struggle
-- Indian independence movement
-- Indian independence in 1947
-- Important freedom fighters
+- Indian independence
+- Independence Day
 - Mahatma Gandhi
 - Subhas Chandra Bose
+- Bhagat Singh
 - Jawaharlal Nehru
 - Sardar Vallabhbhai Patel
-- Bhagat Singh
 - Rani Lakshmibai
-- Bal Gangadhar Tilak
 - Sarojini Naidu
+- Bal Gangadhar Tilak
 - Chandrashekhar Azad
-- British rule in India
-- Major historical events
-- Indian Independence Day
-- Republic of India
-- Important dates and movements
+- Indian independence movements
+- Important historical events and dates
 
-Answer clearly and accurately.
+If appropriate, include important dates and context.
 
-For historical questions:
-- Give the important facts.
-- Include dates when useful.
-- Explain the context in simple language.
-- Do not unnecessarily make the answer extremely long.
+If the question is unrelated to Indian history, politely explain
+that you are primarily an Indian history assistant.
 
-If the user asks something unrelated to Indian history,
-politely explain that Indi_Ai is primarily designed for
-Indian history and Independence-related questions.
-
-User's question:
+USER QUESTION:
 
 {question}
 """
 
     response = llm.invoke(prompt)
 
-    # Gemini/LangChain normally returns a string here,
-    # but this safely handles structured content too.
-    content = response.content
-
-    if isinstance(content, str):
-        answer = content
-
-    elif isinstance(content, list):
-        parts = []
-
-        for item in content:
-            if isinstance(item, dict):
-                if "text" in item:
-                    parts.append(str(item["text"]))
-            else:
-                parts.append(str(item))
-
-        answer = "\n".join(parts)
-
-    else:
-        answer = str(content)
-
     return {
-        "answer": answer
+        "answer": response.content
     }
 
 
@@ -139,60 +109,66 @@ User's question:
 
 workflow = StateGraph(IndiAIState)
 
-workflow.add_node("indi_ai", indi_ai_node)
+workflow.add_node(
+    "indi_ai",
+    indi_ai_node
+)
 
-workflow.add_edge(START, "indi_ai")
-workflow.add_edge("indi_ai", END)
+workflow.add_edge(
+    START,
+    "indi_ai"
+)
+
+workflow.add_edge(
+    "indi_ai",
+    END
+)
 
 indi_ai_graph = workflow.compile()
 
 
 # ============================================================
-# 7. CREATE PUBLIC RUNNABLE
+# 7. PUBLIC FUNCTION
 # ============================================================
 
-def run_indi_ai(input_data: IndiAIInput):
+def ask_indi_ai(input_data: IndiAIInput):
 
-    result = indi_ai_graph.invoke({
-        "question": input_data.question,
-        "answer": ""
-    })
+    result = indi_ai_graph.invoke(
+        {
+            "question": input_data.question,
+            "answer": ""
+        }
+    )
 
-    return {
-        "answer": result["answer"]
-    }
-
-
-indi_ai_runnable = RunnableLambda(run_indi_ai).with_types(
-    input_type=IndiAIInput,
-    output_type=IndiAIOutput
-)
+    return IndiAIOutput(
+        answer=result["answer"]
+    )
 
 
 # ============================================================
-# 8. FASTAPI APPLICATION
+# 8. FASTAPI
 # ============================================================
 
 app = FastAPI(
     title="Indi_Ai",
     version="1.0",
-    description="Indi_Ai - Indian History and Independence Q&A Agent"
+    description="Indian History Q&A Agent"
 )
 
 
 # ============================================================
-# 9. LANGSERVE ROUTE
+# 9. LANGSERVE
 # ============================================================
 
 add_routes(
     app,
-    indi_ai_runnable,
+    ask_indi_ai,
     path="/agent"
 )
 
 
 # ============================================================
-# 10. BASIC HOME ROUTE
+# 10. HOME
 # ============================================================
 
 @app.get("/")
@@ -200,7 +176,7 @@ def home():
 
     return {
         "name": "Indi_Ai",
-        "description": "Indian History and Independence Q&A Agent",
         "status": "running",
+        "message": "Indian History Q&A Agent",
         "playground": "/agent/playground/"
     }
