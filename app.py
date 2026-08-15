@@ -5,12 +5,15 @@ from fastapi import FastAPI
 from langserve import add_routes
 from pydantic import BaseModel
 
+from langchain_core.runnables import RunnableLambda
+
 from langchain_google_genai import ChatGoogleGenerativeAI
+
 from langgraph.graph import StateGraph, START, END
 
 
 # ============================================================
-# 1. API KEY
+# 1. GEMINI API KEY
 # ============================================================
 
 api_key = os.environ.get("GEMINI_API_KEY")
@@ -20,7 +23,7 @@ if not api_key:
 
 
 # ============================================================
-# 2. GEMINI
+# 2. GEMINI LLM
 # ============================================================
 
 llm = ChatGoogleGenerativeAI(
@@ -30,7 +33,7 @@ llm = ChatGoogleGenerativeAI(
 
 
 # ============================================================
-# 3. INPUT / OUTPUT
+# 3. INPUT / OUTPUT SCHEMAS
 # ============================================================
 
 class IndiAIInput(BaseModel):
@@ -51,7 +54,7 @@ class IndiAIState(TypedDict):
 
 
 # ============================================================
-# 5. INDI_AI NODE
+# 5. INDI_AI AGENT NODE
 # ============================================================
 
 def indi_ai_node(state: IndiAIState):
@@ -86,10 +89,15 @@ You can answer questions about:
 - Indian independence movements
 - Important historical events and dates
 
-If appropriate, include important dates and context.
+For historical questions:
+- Give important facts.
+- Include dates when useful.
+- Explain the context simply.
+- Do not make the answer unnecessarily long.
 
-If the question is unrelated to Indian history, politely explain
-that you are primarily an Indian history assistant.
+If the question is unrelated to Indian history,
+politely explain that Indi_Ai is primarily an Indian
+history and Independence-related assistant.
 
 USER QUESTION:
 
@@ -98,8 +106,28 @@ USER QUESTION:
 
     response = llm.invoke(prompt)
 
+    content = response.content
+
+    if isinstance(content, str):
+        answer = content
+
+    elif isinstance(content, list):
+        parts = []
+
+        for item in content:
+            if isinstance(item, dict):
+                if "text" in item:
+                    parts.append(str(item["text"]))
+            else:
+                parts.append(str(item))
+
+        answer = "\n".join(parts)
+
+    else:
+        answer = str(content)
+
     return {
-        "answer": response.content
+        "answer": answer
     }
 
 
@@ -128,7 +156,7 @@ indi_ai_graph = workflow.compile()
 
 
 # ============================================================
-# 7. PUBLIC FUNCTION
+# 7. FUNCTION THAT CALLS THE GRAPH
 # ============================================================
 
 def ask_indi_ai(input_data: IndiAIInput):
@@ -146,29 +174,41 @@ def ask_indi_ai(input_data: IndiAIInput):
 
 
 # ============================================================
-# 8. FASTAPI
+# 8. CONVERT FUNCTION INTO LANGCHAIN RUNNABLE
+# ============================================================
+
+indi_ai_runnable = RunnableLambda(
+    ask_indi_ai
+).with_types(
+    input_type=IndiAIInput,
+    output_type=IndiAIOutput
+)
+
+
+# ============================================================
+# 9. FASTAPI
 # ============================================================
 
 app = FastAPI(
     title="Indi_Ai",
     version="1.0",
-    description="Indian History Q&A Agent"
+    description="Indian History and Independence Q&A Agent"
 )
 
 
 # ============================================================
-# 9. LANGSERVE
+# 10. LANGSERVE
 # ============================================================
 
 add_routes(
     app,
-    ask_indi_ai,
+    indi_ai_runnable,
     path="/agent"
 )
 
 
 # ============================================================
-# 10. HOME
+# 11. HOME ROUTE
 # ============================================================
 
 @app.get("/")
