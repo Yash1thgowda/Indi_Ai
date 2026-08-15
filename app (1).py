@@ -6,6 +6,8 @@ import requests
 
 from typing import TypedDict, List, Optional
 
+from fastapi import FastAPI
+
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.graph import StateGraph, START, END
@@ -16,15 +18,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 # 1. LLM INITIALIZATION
 # ==========================================
 
-# Get Gemini API key from Render Environment Variables
-
 api_key = os.environ.get("GEMINI_API_KEY")
 
 if not api_key:
     raise ValueError("GEMINI_API_KEY is not configured")
-
-
-# Initialize Gemini
 
 llm_flash = ChatGoogleGenerativeAI(
     model="gemini-3.1-flash-lite-preview",
@@ -32,6 +29,13 @@ llm_flash = ChatGoogleGenerativeAI(
 )
 
 llm = llm_flash
+
+
+# ==========================================
+# FASTAPI APP
+# ==========================================
+
+app = FastAPI()
 
 
 # ==========================================
@@ -60,7 +64,7 @@ def run_python_code(code: str) -> str:
     if not isinstance(code, str):
         code = str(code)
 
-    clean_code = code.replace('```python', '').replace('```', '').strip()
+    clean_code = code.replace("```python", "").replace("```", "").strip()
 
     old_stdout = sys.stdout
     new_stdout = io.StringIO()
@@ -68,19 +72,14 @@ def run_python_code(code: str) -> str:
     sys.stdout = new_stdout
 
     try:
-
         local_scope = {}
-
         exec(clean_code, {}, local_scope)
-
         result = new_stdout.getvalue()
 
     except Exception:
-
         result = f"Execution Error:\n{traceback.format_exc()}"
 
     finally:
-
         sys.stdout = old_stdout
 
     return result.strip() if result.strip() else "Success (no terminal output)"
@@ -91,19 +90,15 @@ def generate_test_cases(task_description: str) -> str:
     """Generate specific test scenarios for a given coding task."""
 
     prompt = (
-        f"You are a Senior QA Engineer. Generate 3 to 5 highly specific test scenarios "
-        f"for the following coding task: '{task_description}'.\n"
+        f"You are a Senior QA Engineer. Generate 3 to 5 highly specific "
+        f"test scenarios for the following coding task: '{task_description}'.\n"
         f"Include standard cases and edge cases. Return them as a numbered list."
     )
 
     response = llm.invoke(prompt)
 
-    return response.content if hasattr(response, 'content') else str(response)
+    return response.content if hasattr(response, "content") else str(response)
 
-
-# ==========================================
-# NEW HISTORY API TOOL
-# ==========================================
 
 @tool
 def search_indian_history(topic: str) -> str:
@@ -117,7 +112,6 @@ def search_indian_history(topic: str) -> str:
     response = requests.get(url)
 
     if response.status_code == 200:
-
         data = response.json()
 
         return data.get(
@@ -135,27 +129,18 @@ def search_indian_history(topic: str) -> str:
 def task_input_node(state: CrewState):
 
     print("\n" + "=" * 50)
-
     print("--- NEW TASK INITIALIZATION ---")
 
     user_task = input(
         "Enter the coding task (or type 'exit' to quit): "
     ).strip()
 
-    if user_task.lower() == 'exit':
-
-        return {
-            "next_step": "exit"
-        }
+    if user_task.lower() == "exit":
+        return {"next_step": "exit"}
 
     return {
-
-        "messages": [
-            HumanMessage(content=user_task)
-        ],
-
+        "messages": [HumanMessage(content=user_task)],
         "next_step": "developer"
-
     }
 
 
@@ -163,31 +148,21 @@ def real_time_developer(state: CrewState):
 
     print("\n[Developer] Writing dynamic code using LLM...")
 
-    # Get latest task description
-
-    task = state['messages'][-1].content
+    task = state["messages"][-1].content
 
     dev_prompt = (
         f"Write a clean Python script to solve this: {task}. "
         f"Only return the code, no explanation or markdown formatting."
     )
 
-    if llm_flash is None:
-
-        raise ValueError(
-            "LLM is not initialized."
-        )
-
     response = llm_flash.invoke(dev_prompt)
-
-    # Safely parse Gemini content
 
     content = response.content
 
     if isinstance(content, list):
 
         code_str = (
-            content[0].get('text', '')
+            content[0].get("text", "")
             if isinstance(content[0], dict)
             else str(content[0])
         )
@@ -198,20 +173,14 @@ def real_time_developer(state: CrewState):
 
     print(code_str)
 
-    return {
-        "code": code_str
-    }
+    return {"code": code_str}
 
 
 def real_time_tester(state: CrewState):
 
-    print(
-        "\n[Tester] Generating dynamic tests and executing code..."
-    )
+    print("\n[Tester] Generating dynamic tests and executing code...")
 
-    task = state['messages'][-1].content
-
-    # Generate tests
+    task = state["messages"][-1].content
 
     test_cases = generate_test_cases.invoke(task)
 
@@ -220,7 +189,7 @@ def real_time_tester(state: CrewState):
     if isinstance(content, list):
 
         cases_str = (
-            content[0].get('text', '')
+            content[0].get("text", "")
             if isinstance(content[0], dict)
             else str(content[0])
         )
@@ -229,15 +198,9 @@ def real_time_tester(state: CrewState):
 
         cases_str = str(content)
 
-    # Execute code
-
     execution_result = run_python_code.invoke(
-        {
-            "code": state['code']
-        }
+        {"code": state["code"]}
     )
-
-    # Compile report
 
     report = (
         f"### EXECUTION OUTPUT:\n"
@@ -246,23 +209,18 @@ def real_time_tester(state: CrewState):
         f"{cases_str}"
     )
 
-    return {
-        "report": report
-    }
+    return {"report": report}
 
 
 def manager_decision_node(state: CrewState):
 
     print("\n" + "=" * 50)
-
-    print(
-        "--- MANAGER DASHBOARD : TEST REPORT ---"
-    )
+    print("--- MANAGER DASHBOARD : TEST REPORT ---")
 
     print(
         state.get(
-            'report',
-            'No report available.'
+            "report",
+            "No report available."
         )
     )
 
@@ -272,17 +230,10 @@ def manager_decision_node(state: CrewState):
         "\nCommand (store / another): "
     ).lower().strip()
 
-    if user_input == 'store':
+    if user_input == "store":
+        return {"next_step": "archiver"}
 
-        return {
-            "next_step": "archiver"
-        }
-
-    else:
-
-        return {
-            "next_step": "task_input"
-        }
+    return {"next_step": "task_input"}
 
 
 def archiver_node(state: CrewState):
@@ -291,17 +242,14 @@ def archiver_node(state: CrewState):
         "\n[Archiver] Task stored successfully. Closing workflow."
     )
 
-    return {
-        "next_step": "exit"
-    }
+    return {"next_step": "exit"}
 
 
 # ==========================================
-# 5. GRAPH CONSTRUCTION & ROUTING
+# 5. GRAPH CONSTRUCTION
 # ==========================================
 
 rt_workflow = StateGraph(CrewState)
-
 
 rt_workflow.add_node(
     "task_input",
@@ -328,23 +276,15 @@ rt_workflow.add_node(
     archiver_node
 )
 
-
-# START
-
 rt_workflow.add_edge(
     START,
     "task_input"
 )
 
 
-# ==========================================
-# ROUTING FROM INPUT
-# ==========================================
-
 def route_from_input(state):
 
-    if state.get('next_step') == "exit":
-
+    if state.get("next_step") == "exit":
         return END
 
     return "developer"
@@ -354,11 +294,6 @@ rt_workflow.add_conditional_edges(
     "task_input",
     route_from_input
 )
-
-
-# ==========================================
-# SEQUENTIAL FLOW
-# ==========================================
 
 rt_workflow.add_edge(
     "developer",
@@ -371,14 +306,9 @@ rt_workflow.add_edge(
 )
 
 
-# ==========================================
-# ROUTING FROM MANAGER
-# ==========================================
-
 def route_from_decision(state):
 
-    if state.get('next_step') == "archiver":
-
+    if state.get("next_step") == "archiver":
         return "archiver"
 
     return "task_input"
@@ -389,11 +319,6 @@ rt_workflow.add_conditional_edges(
     route_from_decision
 )
 
-
-# ==========================================
-# ARCHIVER
-# ==========================================
-
 rt_workflow.add_edge(
     "archiver",
     END
@@ -401,7 +326,7 @@ rt_workflow.add_edge(
 
 
 # ==========================================
-# COMPILE GRAPH
+# 6. COMPILE
 # ==========================================
 
 rt_app = rt_workflow.compile()
@@ -412,7 +337,7 @@ print(
 
 
 # ==========================================
-# 6. EXECUTION LOOP
+# 7. EXECUTION
 # ==========================================
 
 if __name__ == "__main__":
@@ -420,22 +345,14 @@ if __name__ == "__main__":
     try:
 
         rt_app.invoke(
-            {
-                "messages": []
-            },
-            config={
-                "recursion_limit": 50
-            }
+            {"messages": []},
+            config={"recursion_limit": 50}
         )
 
     except KeyboardInterrupt:
 
-        print(
-            "\nStopped by user."
-        )
+        print("\nStopped by user.")
 
     except Exception as e:
 
-        print(
-            f"\nAn error occurred: {e}"
-        )
+        print(f"\nAn error occurred: {e}")
