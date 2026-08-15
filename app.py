@@ -42,15 +42,11 @@ llm = llm_flash
 # 2. STATE DEFINITION
 # ==========================================
 
-class CrewState(TypedDict):
+class IndiAIState(TypedDict):
 
-    messages: List[BaseMessage]
+    question: str
 
-    next_step: str
-
-    code: str
-
-    report: str
+    answer: str
 
 # ==========================================
 # 3. TOOLS
