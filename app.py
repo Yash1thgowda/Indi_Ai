@@ -46,12 +46,11 @@ class CrewState(TypedDict):
 
     messages: List[BaseMessage]
 
-    next_step: Optional[str]
+    next_step: str
 
-    code: Optional[str]
+    code: str
 
-    report: Optional[str]
-
+    report: str
 
 # ==========================================
 # 3. TOOLS
